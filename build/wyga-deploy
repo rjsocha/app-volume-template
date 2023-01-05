@@ -49,7 +49,7 @@ do
   if [ -L "${DEPLOY_TO}/current" ]
   then
     _error='unable to dereference "current" link'
-    _current=$(readlink -eqn "${DEPLOY_TO}/current") || break
+    _current=$(readlink -fn "${DEPLOY_TO}/current") || break
 
     _error='canonicalization of "current" symbolic link failed'
     _current=$(basename "${_current}") || break
@@ -84,9 +84,9 @@ then
 fi 
 
 printf "SWITCHING FROM \"%s\" TO \"%s\" ...\n" "${_from}" "${_deploy}"
-ln -sfrn "${DEPLOY_TO}/${_deploy}" "${DEPLOY_TO}/current.switch"
+ln -sfn "${_deploy}" "${DEPLOY_TO}/current.switch"
 mv -Tf "${DEPLOY_TO}/current.switch" "${DEPLOY_TO}/current"
-if _current=$(readlink -eqn "${DEPLOY_TO}/current")
+if _current=$(readlink -fn "${DEPLOY_TO}/current")
 then
   if _current=$(basename "${_current}")
   then

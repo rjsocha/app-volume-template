@@ -1,3 +1,2 @@
 all:
-	docker build -t wyga/app-volume-template build/
-	docker push wyga/app-volume-template:latest
+	docker buildx build --platform "linux/amd64,linux/arm64" -t "wyga/deploy-template:v1" --push --pull --no-cache -f build/Dockerfile build

@@ -1,0 +1,97 @@
+#!/bin/sh
+set -eu
+SOURCE="${SOURCE:-/src}"
+# Synchronize source to DEPLOY_TO location
+EXCLUDE_SRC=".deploy-excluded"
+_success=0
+_error=""
+while true
+do
+  _error='missing source directory'
+  [ -d "${SOURCE}" ] || break
+
+  _error='missing DEPLOY_TO variable'
+  [ -n "${DEPLOY_TO:-}" ] || break
+
+  _error='missing DEPLOY_TO directory'
+  [ -d "${DEPLOY_TO}" ] || break
+
+  if [ -e "${DEPLOY_TO}/current" ]
+  then
+    _error='object "current" exists but is not a symbolic link'
+    [ -L "${DEPLOY_TO}/current" ] || break
+  fi
+
+  if [ -e "${DEPLOY_TO}/current.switch" ]
+  then
+    _error='object "current.switch" exists but is not a symbolic link'
+    [ -L "${DEPLOY_TO}/current.switch" ] || break 
+  fi
+  
+  if [ -e "${DEPLOY_TO}/a" ]
+  then
+    _error='object "a" exists but is not a directory'
+    [ -d "${DEPLOY_TO}/a" ] || break
+  else
+    _error='unable to create the "a" directory'
+    mkdir "${DEPLOY_TO}/a" || break
+  fi
+
+  if [ -e "${DEPLOY_TO}/b" ]
+  then
+    _error='object "b" exists but is not a directory'
+    [ -d "${DEPLOY_TO}/b" ] || break
+  else
+    _error='unable to create the "b" directory'
+    mkdir "${DEPLOY_TO}/b" || break
+  fi
+
+  if [ -L "${DEPLOY_TO}/current" ]
+  then
+    _error='unable to dereference "current" link'
+    _current=$(readlink -eqn "${DEPLOY_TO}/current") || break
+
+    _error='canonicalization of "current" symbolic link failed'
+    _current=$(basename "${_current}") || break
+    if [ "${_current}". = "a". ]
+    then
+      _from="a"
+      _deploy="b"
+    else
+      _from="b"
+      _deploy="a"
+    fi
+  else
+    _deploy="a"
+    _from="none"
+    _current="none"
+  fi
+  printf "DEPLOYING SOURCE FROM \"%s\" TO \"%s\"\n" "${SOURCE}" "${DEPLOY_TO}/${_deploy}/"
+  if [ -f "/${SOURCE}/${EXCLUDE_SRC}" ]
+  then
+    rsync -aq --delete --exclude "/${EXCLUDE_SRC}" --exclude-from "/${SOURCE}/${EXCLUDE_SRC}" "/${SOURCE}/" "${DEPLOY_TO}/${_deploy}/"
+  else
+    rsync -aq --delete "${SOURCE}/" "${DEPLOY_TO}/${_deploy}"
+  fi
+  _success=1
+  break
+done
+
+if [ ${_success} -ne 1 ]
+then
+ printf "ERROR: %s\n" "${_error}"
+ exit 1
+fi 
+
+printf "SWITCHING FROM \"%s\" TO \"%s\" ...\n" "${_from}" "${_deploy}"
+ln -sfrn "${DEPLOY_TO}/${_deploy}" "${DEPLOY_TO}/current.switch"
+mv -Tf "${DEPLOY_TO}/current.switch" "${DEPLOY_TO}/current"
+if _current=$(readlink -eqn "${DEPLOY_TO}/current")
+then
+  if _current=$(basename "${_current}")
+  then
+    printf "CURRENT: %s\n" "${_current}"
+  fi
+fi
+printf "DONE\n"
+sleep infinity

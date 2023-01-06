@@ -1,17 +1,17 @@
 #!/bin/sh
 set -eu
 SOURCE="${SOURCE:-/src}"
-# Synchronize source to DEPLOY_TO location
-EXCLUDE_SRC=".deploy-excluded"
 _success=0
-_error=""
 while true
 do
-  _error='missing source directory'
-  [ -d "${SOURCE}" ] || break
-
   _error='missing DEPLOY_TO variable'
   [ -n "${DEPLOY_TO:-}" ] || break
+
+  _error='missing source deploy directory'
+  [ -d "${SOURCE}/deploy" ] || break
+
+  _error='missing source exclude file'
+  [ -f "${SOURCE}/exclude" ] || break
 
   _error='missing DEPLOY_TO directory'
   [ -d "${DEPLOY_TO}" ] || break
@@ -46,6 +46,9 @@ do
     mkdir "${DEPLOY_TO}/b" || break
   fi
 
+  DEPLOY="a"
+  FROM="none"
+
   if [ -L "${DEPLOY_TO}/current" ]
   then
     _error='unable to dereference "current" link'
@@ -55,24 +58,27 @@ do
     _current=$(basename "${_current}") || break
     if [ "${_current}". = "a". ]
     then
-      _from="a"
-      _deploy="b"
+      FROM="a"
+      DEPLOY="b"
     else
-      _from="b"
-      _deploy="a"
+      FROM="b"
+      DEPLOY="a"
     fi
-  else
-    _deploy="a"
-    _from="none"
-    _current="none"
   fi
-  printf "DEPLOYING SOURCE FROM \"%s\" TO \"%s\"\n" "${SOURCE}" "${DEPLOY_TO}/${_deploy}/"
-  if [ -f "/${SOURCE}/${EXCLUDE_SRC}" ]
-  then
-    rsync -aq --delete --exclude "/${EXCLUDE_SRC}" --exclude-from "/${SOURCE}/${EXCLUDE_SRC}" "/${SOURCE}/" "${DEPLOY_TO}/${_deploy}/"
-  else
-    rsync -aq --delete "${SOURCE}/" "${DEPLOY_TO}/${_deploy}"
-  fi
+
+  printf "DEPLOYING SOURCE FROM \"%s\" TO \"%s\"\n" "${SOURCE}/deploy" "${DEPLOY_TO}/${DEPLOY}"
+  _error="deploy failed"
+  rsync -aq --delete --exclude-from "/${SOURCE}/exclude" "/${SOURCE}/deploy/" "${DEPLOY_TO}/${DEPLOY}/" || break
+
+  printf "SWITCHING FROM \"%s\" TO \"%s\" ...\n" "${FROM}" "${DEPLOY}"
+  _error='linking deploy to current.switch link failed'
+  ln -sfn "${DEPLOY}" "${DEPLOY_TO}/current.switch" || break
+  
+  _error='switching deploy as current failed'
+  mv -Tf "${DEPLOY_TO}/current.switch" "${DEPLOY_TO}/current" || break
+
+  printf "CURRENT: %s\n" "${DEPLOY}"
+
   _success=1
   break
 done
@@ -83,15 +89,5 @@ then
  exit 1
 fi 
 
-printf "SWITCHING FROM \"%s\" TO \"%s\" ...\n" "${_from}" "${_deploy}"
-ln -sfn "${_deploy}" "${DEPLOY_TO}/current.switch"
-mv -Tf "${DEPLOY_TO}/current.switch" "${DEPLOY_TO}/current"
-if _current=$(readlink -fn "${DEPLOY_TO}/current")
-then
-  if _current=$(basename "${_current}")
-  then
-    printf "CURRENT: %s\n" "${_current}"
-  fi
-fi
-printf "DONE\n"
+printf "DEPLOYED: $(date -R)\n"
 sleep infinity

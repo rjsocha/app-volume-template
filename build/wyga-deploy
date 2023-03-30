@@ -1,4 +1,5 @@
 #!/bin/sh
+# VERSION: 2023033001
 set -eu
 cd /
 SOURCE="${SOURCE:-/src}"

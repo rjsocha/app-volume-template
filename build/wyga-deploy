@@ -2,7 +2,7 @@
 set -eu
 cd /
 SOURCE="${SOURCE:-/src}"
-if [ "$1"x = "extract"x ]
+if [ "${1:-}"x = "extract"x ]
 then
   if [ -d /extract ]
   then

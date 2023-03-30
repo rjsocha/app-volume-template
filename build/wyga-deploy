@@ -1,6 +1,25 @@
 #!/bin/sh
 set -eu
+cd /
 SOURCE="${SOURCE:-/src}"
+if [ "$1"x = "extract"x ]
+then
+  if [ -d /extract ]
+  then
+    if [ -z "$(ls -A /extract 2>/dev/null)" ]
+    then
+      rsync -aq "${SOURCE}/deploy/" "/extract/" || exit 10
+    else
+      printf -- "ERROR: /extract directory is not empty ...\n"
+      exit 2
+    fi
+  else
+    printf -- "ERROR: missing /extract output directory ...\n"
+    exit 1
+  fi
+  exit 0
+fi
+
 _success=0
 while true
 do
@@ -68,7 +87,7 @@ do
 
   printf "DEPLOYING SOURCE FROM \"%s\" TO \"%s\"\n" "${SOURCE}/deploy" "${DEPLOY_TO}/${DEPLOY}"
   _error="deploy failed"
-  rsync -aq --delete --exclude-from "/${SOURCE}/exclude" "/${SOURCE}/deploy/" "${DEPLOY_TO}/${DEPLOY}/" || break
+  rsync -aq --delete --exclude-from "${SOURCE}/exclude" "${SOURCE}/deploy/" "${DEPLOY_TO}/${DEPLOY}/" || break
 
   printf "SWITCHING FROM \"%s\" TO \"%s\" ...\n" "${FROM}" "${DEPLOY}"
   _error='linking deploy to current.switch link failed'

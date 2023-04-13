@@ -1,0 +1,113 @@
+#!/bin/sh
+# VERSION: 2023033001
+set -eu
+cd /
+SOURCE="${SOURCE:-/src}"
+if [ "${1:-}"x = "extract"x ]
+then
+  if [ -d /extract ]
+  then
+    if [ -z "$(ls -A /extract 2>/dev/null)" ]
+    then
+      rsync -aq "${SOURCE}/deploy/" "/extract/" || exit 10
+    else
+      printf -- "ERROR: /extract directory is not empty ...\n"
+      exit 2
+    fi
+  else
+    printf -- "ERROR: missing /extract output directory ...\n"
+    exit 1
+  fi
+  exit 0
+fi
+
+_success=0
+while true
+do
+  _error='missing DEPLOY_TO variable'
+  [ -n "${DEPLOY_TO:-}" ] || break
+
+  _error='missing source deploy directory'
+  [ -d "${SOURCE}/deploy" ] || break
+
+  _error='missing source exclude file'
+  [ -f "${SOURCE}/exclude" ] || break
+
+  _error='missing DEPLOY_TO directory'
+  [ -d "${DEPLOY_TO}" ] || break
+
+  if [ -e "${DEPLOY_TO}/current" ]
+  then
+    _error='object "current" exists but is not a symbolic link'
+    [ -L "${DEPLOY_TO}/current" ] || break
+  fi
+
+  if [ -e "${DEPLOY_TO}/current.switch" ]
+  then
+    _error='object "current.switch" exists but is not a symbolic link'
+    [ -L "${DEPLOY_TO}/current.switch" ] || break 
+  fi
+  
+  if [ -e "${DEPLOY_TO}/a" ]
+  then
+    _error='object "a" exists but is not a directory'
+    [ -d "${DEPLOY_TO}/a" ] || break
+  else
+    _error='unable to create the "a" directory'
+    mkdir "${DEPLOY_TO}/a" || break
+  fi
+
+  if [ -e "${DEPLOY_TO}/b" ]
+  then
+    _error='object "b" exists but is not a directory'
+    [ -d "${DEPLOY_TO}/b" ] || break
+  else
+    _error='unable to create the "b" directory'
+    mkdir "${DEPLOY_TO}/b" || break
+  fi
+
+  DEPLOY="a"
+  FROM="none"
+
+  if [ -L "${DEPLOY_TO}/current" ]
+  then
+    _error='unable to dereference "current" link'
+    _current=$(readlink -fn "${DEPLOY_TO}/current") || break
+
+    _error='canonicalization of "current" symbolic link failed'
+    _current=$(basename "${_current}") || break
+    if [ "${_current}". = "a". ]
+    then
+      FROM="a"
+      DEPLOY="b"
+    else
+      FROM="b"
+      DEPLOY="a"
+    fi
+  fi
+
+  printf "DEPLOYING SOURCE FROM \"%s\" TO \"%s\"\n" "${SOURCE}/deploy" "${DEPLOY_TO}/${DEPLOY}"
+  _error="deploy failed"
+  rsync -aq --delete --exclude-from "${SOURCE}/exclude" "${SOURCE}/deploy/" "${DEPLOY_TO}/${DEPLOY}/" || break
+
+  printf "SWITCHING FROM \"%s\" TO \"%s\" ...\n" "${FROM}" "${DEPLOY}"
+  _error='linking deploy to current.switch link failed'
+  ln -sfn "${DEPLOY}" "${DEPLOY_TO}/current.switch" || break
+  
+  _error='switching deploy as current failed'
+  mv -Tf "${DEPLOY_TO}/current.switch" "${DEPLOY_TO}/current" || break
+
+  printf "CURRENT: %s\n" "${DEPLOY}"
+
+  _success=1
+  break
+done
+
+if [ ${_success} -ne 1 ]
+then
+ printf "ERROR: %s\n" "${_error}"
+ exit 1
+fi 
+
+printf "DEPLOYED: $(date -R)\n"
+sleep infinity

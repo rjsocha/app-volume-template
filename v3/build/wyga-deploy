@@ -1,0 +1,111 @@
+#!/bin/sh
+# VERSION: 2024022201
+set -eu
+umask 0022
+cd /
+SOURCE="${SOURCE:-/src}"
+
+if [ "${1:-}"x = "shell"x ]
+then
+  exec /bin/sh
+fi
+
+if [ "${1:-}"x = "extract"x ]
+then
+  if [ -d /extract ]
+  then
+    if [ -z "$(ls -A /extract 2>/dev/null)" ]
+    then
+      rsync -aq "${SOURCE}/deploy/" "/extract/" || exit 10
+    else
+      printf -- "ERROR: /extract directory is not empty ...\n"
+      exit 2
+    fi
+  else
+    printf -- "ERROR: missing /extract output directory ...\n"
+    exit 1
+  fi
+  exit 0
+fi
+
+_success=0
+while true
+do
+  _error='missing DEPLOY_TO variable'
+  [ -n "${DEPLOY_TO:-}" ] || break
+
+  _error='missing source deploy directory'
+  [ -d "${SOURCE}/deploy" ] || break
+
+  _error='missing source exclude file'
+  [ -f "${SOURCE}/exclude" ] || break
+
+  _error='missing DEPLOY_TO directory'
+  [ -d "${DEPLOY_TO}" ] || break
+
+  if [ -e "${DEPLOY_TO}/current" ] && [ -L "${DEPLOY_TO}/current" ]
+  then
+    _error='unable to remove "current" symbolic link'
+    rm -f -- "${DEPLOY_TO}/current" || break
+  fi
+
+  if [ ! -e "${DEPLOY_TO}/current" ]
+  then
+    _error='unable to create "current" directory'
+    mkdir -p "${DEPLOY_TO}/current" || break
+  fi
+
+  _error='object "current" exists but is not a directory'
+  [ -d "${DEPLOY_TO}/current" ] || break
+
+  if [ -e "${DEPLOY_TO}/stage" ]
+  then
+    _error='unable to remove "stage" directory'
+    rm -rf -- "${DEPLOY_TO}/stage" || break
+  fi
+
+  DEPLOY="current"
+  STAGE="stage"
+  
+  printf "DEPLOYING STAGE FROM \"%s\" TO \"%s\"\n" "${SOURCE}/deploy" "${DEPLOY_TO}/${STAGE}"
+  _error="stage deploy failed"
+  rsync -aq --delete --exclude-from "${SOURCE}/exclude" "${SOURCE}/deploy/" "${DEPLOY_TO}/${STAGE}/" || break
+
+  printf "SWITCHING FROM \"%s\" TO \"%s\" ...\n" "${STAGE}" "${DEPLOY}"
+  _error='switching from stage to current failed'
+  mv.ex "${DEPLOY_TO}/${STAGE}" "${DEPLOY_TO}/${DEPLOY}" || break
+  
+  printf "CURRENT: %s\n" "${DEPLOY_TO}/${DEPLOY}"
+
+  _success=1
+
+  if [ -e "${DEPLOY_TO}/stage" ]
+  then
+    rm -rf -- "${DEPLOY_TO}/stage" || printf -- 'unable to purge "stage" directory\n'
+  fi
+
+  # non critical
+  if [ -d "${DEPLOY_TO}/a" ]
+  then
+    rm -rf -- "${DEPLOY_TO}/a" || printf -- 'purging of v2 stage "a" directory failed\n'
+  fi
+
+  if [ -d "${DEPLOY_TO}/b" ]
+  then
+    rm -rf -- "${DEPLOY_TO}/b" || printf -- 'purging of v2 stage "b" directory failed\n'
+  fi
+
+  break
+done
+
+if [ ${_success} -ne 1 ]
+then
+ printf "ERROR: %s\n" "${_error}"
+ exit 1
+fi 
+
+# Marker
+date +%s.%N > "${DEPLOY_TO}/.marker"
+
+printf "DEPLOYED: $(date -R)\n"
+sleep infinity

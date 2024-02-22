@@ -34,7 +34,7 @@ then
   while true
   do
     n=$(( RANDOM % $2 ))
-    printf -- "%03d: %dd\n" $n $i
+    printf -- "%03d: %d\n" $n $i
     docker run --rm --name wyga-deploy-test-update -v wyga-deploy-test-volume:/usr/share/nginx/html -e DEPLOY_TO=/usr/share/nginx/html wyga-deploy-test:$n ${3:-} solo quiet
     if [[ -e FAIL ]]
     then

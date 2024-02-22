@@ -3,13 +3,24 @@ set -eu
 
 if [[ ${1:-} == "watch" ]]
 then
+  i=0
+  j=0
   while true
   do
-    if ! curl -f -v http://${IP}/current/id 2>/dev/shm/wyga.out
+    rc=0
+    res=$(curl -f -v http://${IP}/current/id 2>/dev/shm/wyga.out) || rc=1
+    printf -- "%04d: %09d / %05d\n" $res $i $j
+    if [[ $rc -eq 1 ]]
     then
       cat /dev/shm/wyga.out
       echo "FAIL!"
       break
+    fi
+    (( j++ )) || true
+    if [[ $(( $j % 10000 )) -eq 0 ]]
+    then
+      (( i++ )) || true
+      j=0
     fi
   done
   touch FAIL
@@ -19,10 +30,12 @@ fi
 
 if [[ ${1:-} == "spawn" ]]
 then
+  i=0
+  j=0
   while true
   do
     n=$(( RANDOM % $2 ))
-    echo $n
+    printf -- "%04d: %09d / %05d\n" $n $i $j
     docker run --rm --name wyga-deploy-test-update -v wyga-deploy-test-volume:/usr/share/nginx/html -e DEPLOY_TO=/usr/share/nginx/html wyga-deploy-test:$n ${3:-} solo quiet
     if [[ -e FAIL ]]
     then
@@ -50,7 +63,7 @@ docker network inspect wyga-deploy-test-network &>/dev/null || docker network cr
 docker volume inspect wyga-deploy-test-volume &>/dev/null || docker volume create wyga-deploy-test-volume
 docker inspect wyga-deploy-test-nginx &>/dev/null && docker rm -f -v wyga-deploy-test-nginx
 docker inspect wyga-deploy-test-update &>/dev/null && docker rm -f -v wyga-deploy-test-update
-docker run -d --name wyga-deploy-test-nginx --rm --network wyga-deploy-test-network -v wyga-deploy-test-volume:/usr/share/nginx/html nginx:alpine
+docker run -d --name wyga-deploy-test-nginx --log-driver none --rm --network wyga-deploy-test-network -v wyga-deploy-test-volume:/usr/share/nginx/html nginx:alpine
 IP=$(docker inspect -f '{{range.NetworkSettings.Networks}}{{.IPAddress}}{{end}}' wyga-deploy-test-nginx)
 export IP
 if curl -sf http://${IP}/index.html | grep -q 'Welcome to nginx!'

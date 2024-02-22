@@ -1,6 +1,7 @@
 #!/bin/bash
 set -eu
 echo building images...
+docker pull wyga/deploy-template:v3
 N=${1:-100}
 for n in $(seq 0 $N)
 do

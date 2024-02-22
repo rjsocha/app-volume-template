@@ -1,0 +1,147 @@
+#!/bin/sh
+# VERSION: 2024022202
+set -eu
+umask 0022
+
+QUIET=0
+SIMPLE=0
+SOLO=0
+EXTRACT=0
+RSHELL=0
+NOMARKER=0
+
+while [ $# -gt 0 ]
+do
+  case "${1}" in
+    nomarker)
+      NOMARKER=1
+      ;;
+    quiet)
+      QUIET=1
+      ;;
+    simple)
+      SIMPLE=1
+      ;;
+    solo)
+      SOLO=1
+      ;;
+    extract)
+      EXTRACT=1
+      ;;
+    sh|shell)
+      RSHELL=1
+  esac
+  shift
+done
+
+cd /
+SOURCE="${SOURCE:-/src}"
+
+[ ${RSHELL} -eq 0 ] || exec /bin/sh
+if [ ${EXTRACT} -eq 1 ]
+then
+  if [ -d /extract ]
+  then
+    if [ -z "$(ls -A /extract 2>/dev/null)" ]
+    then
+      cp -af "${SOURCE}/deploy/." "/extract/" 2>/dev/null || exit 10
+    else
+      printf -- "ERROR: /extract directory is not empty ...\n"
+      exit 2
+    fi
+  else
+    printf -- "ERROR: missing /extract output directory ...\n"
+    exit 1
+  fi
+  exit 0
+fi
+if [ -n "${DEPLOY_TO:-}" ]
+then
+  export TARGET="${DEPLOY_TO}"
+fi
+
+_success=0
+while true
+do
+  _error='missing TARGET variable'
+  [ -n "${TARGET:-}" ] || break
+
+  _error='missing source deploy directory'
+  [ -d "${SOURCE}/deploy" ] || break
+
+  _error='missing TARGET directory'
+  [ -d "${TARGET}" ] || break
+
+  if [ -e "${TARGET}/current" ] && [ -L "${TARGET}/current" ]
+  then
+    _error='unable to remove "current" symbolic link'
+    rm -f -- "${TARGET}/current" || break
+  fi
+
+  if [ ! -e "${TARGET}/current" ]
+  then
+    _error='unable to create "current" directory'
+    mkdir -p "${TARGET}/current" || break
+  fi
+
+  _error='object "current" exists but is not a directory'
+  [ -d "${TARGET}/current" ] || break
+
+  if [ -e "${TARGET}/.stage" ]
+  then
+    _error='unable to remove ".stage" directory'
+    rm -rf -- "${TARGET}/.stage" || break
+  fi
+
+  DEPLOY="current"
+  STAGE=".stage"
+  
+
+  [ ${QUIET} -eq 1 ] || printf "DEPLOYING STAGE FROM \"%s\" TO \"%s\"\n" "${SOURCE}/deploy" "${TARGET}/${STAGE}"
+  _error="stage deploy failed"
+  cp -af "${SOURCE}/deploy/" "${TARGET}/${STAGE}" 2>/dev/null || break
+
+  [ ${QUIET} -eq 1 ] || printf "SWITCHING FROM \"%s\" TO \"%s\" ...\n" "${STAGE}" "${DEPLOY}"
+  if [ ${SIMPLE} -eq 1 ]
+  then
+    printf -- "SIMPLE SWITCH (FOR TESTING ONLY)\n"
+    mv -f -- "${TARGET}/${DEPLOY}" "${TARGET}/${DEPLOY}.switch"
+    mv -f -- "${TARGET}/${STAGE}" "${TARGET}/${DEPLOY}"
+    rm -rf -- "${TARGET}/${DEPLOY}.switch"
+  else
+    _error='switching from stage to current failed'
+    mv-swap "${TARGET}/${STAGE}" "${TARGET}/${DEPLOY}" || break
+  fi
+  [ ${QUIET} -eq 1 ] || printf "CURRENT: %s\n" "${TARGET}/${DEPLOY}"
+
+  _success=1
+
+  # non critical
+  if [ -e "${TARGET}/.stage" ]
+  then
+    rm -rf -- "${TARGET}/.stage" || printf -- 'unable to purge "stage" directory\n'
+  fi
+
+  if [ -d "${TARGET}/a" ]
+  then
+    rm -rf -- "${TARGET}/a" || printf -- 'purging of v2 stage "a" directory failed\n'
+  fi
+
+  if [ -d "${TARGET}/b" ]
+  then
+    rm -rf -- "${TARGET}/b" || printf -- 'purging of v2 stage "b" directory failed\n'
+  fi
+
+  break
+done
+
+if [ ${_success} -ne 1 ]
+then
+ printf "ERROR: %s\n" "${_error}"
+ exit 1
+fi 
+
+[ ${NOMARKER} -eq 1 ] || date "+%s.%N" > "${TARGET}/.marker"
+
+[ ${QUIET} -eq 1 ] || printf "DEPLOYED: $(date -R)\n"
+[ ${SOLO} -eq 1 ] || sleep infinity

@@ -1,10 +1,18 @@
 #!/bin/bash
 set -eu
+source files
 echo building images...
 docker pull wyga/deploy-template:v3
 N=${1:-100}
 for n in $(seq 0 $N)
 do
+  if [[ $(( RANDOM % 10 )) -lt 5 ]]
+  then
+    s=${#files[@]}
+    x=${files[$(( RANDOM % s))]}
+    cp --parents $x context/data/
+    echo file added: $x
+  fi
   printf -- "$n\n" >context/data/id
   printf -- "$n\n" 
   docker image inspect wyga-deploy-test:$n &>/dev/null || docker build --quiet -t wyga-deploy-test:$n -f Dockerfile context

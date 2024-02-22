@@ -1,0 +1,10 @@
+#!/bin/bash
+set -eu
+echo building images...
+N=${1:-100}
+for n in $(seq 0 $N)
+do
+  printf -- "$n\n" >context/data/id
+  printf -- "$n\n" 
+  docker image inspect wyga-deploy-test:$n &>/dev/null || docker build --quiet -t wyga-deploy-test:$n -f Dockerfile context
+done

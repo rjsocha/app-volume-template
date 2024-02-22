@@ -1,0 +1,64 @@
+#!/bin/bash
+set -eu
+
+if [[ ${1:-} == "watch" ]]
+then
+  while true
+  do
+    if ! curl -f -v http://${IP}/current/id 2>/dev/shm/wyga.out
+    then
+      cat /dev/shm/wyga.out
+      echo "FAIL!"
+      break
+    fi
+  done
+  touch FAIL
+  sleep infinity
+  exit
+fi
+
+if [[ ${1:-} == "spawn" ]]
+then
+  while true
+  do
+    n=$(( RANDOM % $2 ))
+    echo $n
+    docker run --rm --name wyga-deploy-test-update -v wyga-deploy-test-volume:/usr/share/nginx/html -e DEPLOY_TO=/usr/share/nginx/html wyga-deploy-test:$n ${3:-} solo quiet
+    if [[ -e FAIL ]]
+    then
+      break
+    fi
+  done
+  echo FAILED
+  sleep infinity
+  exit 0
+fi
+
+finish() {
+  docker inspect wyga-deploy-test-nginx &>/dev/null && docker rm -f -v wyga-deploy-test-nginx
+  docker inspect wyga-deploy-test-update &>/dev/null && docker rm -f -v wyga-deploy-test-update
+  docker volume rm wyga-deploy-test-volume || true
+  docker network rm wyga-deploy-test-network || true
+  [[ -f FAIL ]] && rm -- FAIL || true
+  echo CLEANUP
+}
+trap finish EXIT
+N="${1:-50}"
+SIMPLE="${2:-}"
+
+docker network inspect wyga-deploy-test-network &>/dev/null || docker network create wyga-deploy-test-network
+docker volume inspect wyga-deploy-test-volume &>/dev/null || docker volume create wyga-deploy-test-volume
+docker inspect wyga-deploy-test-nginx &>/dev/null && docker rm -f -v wyga-deploy-test-nginx
+docker inspect wyga-deploy-test-update &>/dev/null && docker rm -f -v wyga-deploy-test-update
+docker run -d --name wyga-deploy-test-nginx --rm --network wyga-deploy-test-network -v wyga-deploy-test-volume:/usr/share/nginx/html nginx:alpine
+IP=$(docker inspect -f '{{range.NetworkSettings.Networks}}{{.IPAddress}}{{end}}' wyga-deploy-test-nginx)
+export IP
+if curl -sf http://${IP}/index.html | grep -q 'Welcome to nginx!'
+then
+  echo OK
+else
+  echo FAIL
+  exit 1
+fi
+docker run --rm --name wyga-deploy-test-update -v wyga-deploy-test-volume:/usr/share/nginx/html -e DEPLOY_TO=/usr/share/nginx/html wyga-deploy-test:0 solo quiet
+tmux new-session $0 spawn $N ${SIMPLE}\; split-window -v $0 watch

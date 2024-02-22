@@ -1,16 +1,44 @@
 #!/bin/sh
-# VERSION: 2024022201
+# VERSION: 2024022202
 set -eu
 umask 0022
+
+QUIET=0
+SIMPLE=0
+SOLO=0
+EXTRACT=0
+RSHELL=0
+NOMARKER=0
+
+while [ $# -gt 0 ]
+do
+  case "${1}" in
+    nomarker)
+      NOMARKER=1
+      ;;
+    quiet)
+      QUIET=1
+      ;;
+    simple)
+      SIMPLE=1
+      ;;
+    solo)
+      SOLO=1
+      ;;
+    exctract)
+      EXTRACT=1
+      ;;
+    sh|shell)
+      RSHELL=1
+  esac
+  shift
+done
+
 cd /
 SOURCE="${SOURCE:-/src}"
 
-if [ "${1:-}"x = "shell"x ]
-then
-  exec /bin/sh
-fi
-
-if [ "${1:-}"x = "extract"x ]
+[ ${RSHELL} -eq 0 ] || exec /bin/sh
+if [ ${EXTRACT} -eq 1 ]
 then
   if [ -d /extract ]
   then
@@ -37,8 +65,7 @@ do
   _error='missing source deploy directory'
   [ -d "${SOURCE}/deploy" ] || break
 
-  _error='missing source exclude file'
-  [ -f "${SOURCE}/exclude" ] || break
+  [ -f "${SOURCE}/exclude" ] || touch "${SOURCE}/exclude"
 
   _error='missing DEPLOY_TO directory'
   [ -d "${DEPLOY_TO}" ] || break
@@ -67,24 +94,32 @@ do
   DEPLOY="current"
   STAGE="stage"
   
-  printf "DEPLOYING STAGE FROM \"%s\" TO \"%s\"\n" "${SOURCE}/deploy" "${DEPLOY_TO}/${STAGE}"
+
+  [ ${QUIET} -eq 1 ] || printf "DEPLOYING STAGE FROM \"%s\" TO \"%s\"\n" "${SOURCE}/deploy" "${DEPLOY_TO}/${STAGE}"
   _error="stage deploy failed"
   rsync -aq --delete --exclude-from "${SOURCE}/exclude" "${SOURCE}/deploy/" "${DEPLOY_TO}/${STAGE}/" || break
 
-  printf "SWITCHING FROM \"%s\" TO \"%s\" ...\n" "${STAGE}" "${DEPLOY}"
-  _error='switching from stage to current failed'
-  mv.ex "${DEPLOY_TO}/${STAGE}" "${DEPLOY_TO}/${DEPLOY}" || break
-  
-  printf "CURRENT: %s\n" "${DEPLOY_TO}/${DEPLOY}"
+  [ ${QUIET} -eq 1 ] || printf "SWITCHING FROM \"%s\" TO \"%s\" ...\n" "${STAGE}" "${DEPLOY}"
+  if [ ${SIMPLE} -eq 1 ]
+  then
+    printf -- "SIMPLE SWITCH (FOR TESTING ONLY)\n"
+    mv -f -- "${DEPLOY_TO}/${DEPLOY}" "${DEPLOY_TO}/${DEPLOY}.switch"
+    mv -f -- "${DEPLOY_TO}/${STAGE}" "${DEPLOY_TO}/${DEPLOY}"
+    rm -rf -- "${DEPLOY_TO}/${DEPLOY}.switch"
+  else
+    _error='switching from stage to current failed'
+    mv.ex "${DEPLOY_TO}/${STAGE}" "${DEPLOY_TO}/${DEPLOY}" || break
+  fi
+  [ ${QUIET} -eq 1 ] || printf "CURRENT: %s\n" "${DEPLOY_TO}/${DEPLOY}"
 
   _success=1
 
+  # non critical
   if [ -e "${DEPLOY_TO}/stage" ]
   then
     rm -rf -- "${DEPLOY_TO}/stage" || printf -- 'unable to purge "stage" directory\n'
   fi
 
-  # non critical
   if [ -d "${DEPLOY_TO}/a" ]
   then
     rm -rf -- "${DEPLOY_TO}/a" || printf -- 'purging of v2 stage "a" directory failed\n'
@@ -104,8 +139,7 @@ then
  exit 1
 fi 
 
-# Marker
-date +%s.%N > "${DEPLOY_TO}/.marker"
+[ ${NOMARKER} -eq 1 ] || date "+%s.%N" > "${DEPLOY_TO}/.marker"
 
-printf "DEPLOYED: $(date -R)\n"
-sleep infinity
+[ ${QUIET} -eq 1 ] || printf "DEPLOYED: $(date -R)\n"
+[ ${SOLO} -eq 1 ] || sleep infinity

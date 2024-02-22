@@ -41,6 +41,12 @@ then
     then
       break
     fi
+    (( j++ )) || true
+    if [[ $(( $j % 10000 )) -eq 0 ]]
+    then
+      (( i++ )) || true
+      j=0
+    fi
   done
   echo FAILED
   sleep infinity

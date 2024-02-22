@@ -31,22 +31,16 @@ fi
 if [[ ${1:-} == "spawn" ]]
 then
   i=0
-  j=0
   while true
   do
     n=$(( RANDOM % $2 ))
-    printf -- "%04d: %09d / %05d\n" $n $i $j
+    printf -- "%03d: %dd\n" $n $i
     docker run --rm --name wyga-deploy-test-update -v wyga-deploy-test-volume:/usr/share/nginx/html -e DEPLOY_TO=/usr/share/nginx/html wyga-deploy-test:$n ${3:-} solo quiet
     if [[ -e FAIL ]]
     then
       break
     fi
-    (( j++ )) || true
-    if [[ $(( $j % 10000 )) -eq 0 ]]
-    then
-      (( i++ )) || true
-      j=0
-    fi
+    (( i++ )) || true
   done
   echo FAILED
   sleep infinity
